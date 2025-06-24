@@ -194,15 +194,16 @@ var nginxPHPPersistent = ServiceType{
 		PersistentVolumeType: corev1.ReadWriteMany,
 		Backup:               true,
 	},
-	InitContainer: ServiceContainer{
-		Name: "fix-storage-permissions",
-		FeatureFlags: map[string]bool{
-			"rootlessworkloads": true,
-		},
-		Command: []string{
-			"sh",
-			"-c",
-			`set -e
+	InitContainers: []ServiceContainer{
+		{
+			Name: "fix-storage-permissions",
+			FeatureFlags: map[string]bool{
+				"rootlessworkloads": true,
+			},
+			Command: []string{
+				"sh",
+				"-c",
+				`set -e
 SENTINEL="/storage/.lagoon-rootless-migration-complete"
 if ! [ -f "$SENTINEL" ]; then
 	find /storage -exec chown {{ .ServiceValues.PodSecurityContext.RunAsUser}}:0 {} +
@@ -210,22 +211,35 @@ if ! [ -f "$SENTINEL" ]; then
 	find /storage -type d -exec chmod a+x {} +
 	touch "$SENTINEL"
 fi`,
-		},
-		Container: corev1.Container{
-			Name:            "fix-storage-permissions",
-			Image:           "library/busybox:musl",
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			SecurityContext: &corev1.SecurityContext{
-				RunAsUser: helpers.Int64Ptr(0),
 			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      "{{ .ServiceValues.PersistentVolumeName }}",
-				MountPath: "/storage",
+			Container: corev1.Container{
+				Name:            "fix-storage-permissions",
+				Image:           "library/busybox:musl",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					RunAsUser: helpers.Int64Ptr(0),
+				},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "{{ .ServiceValues.PersistentVolumeName }}",
+					MountPath: "/storage",
+				},
 			},
 		},
 	},
+	// Additional init containers can be added dynamically via ServiceValues.AdditionalInitContainers
+	// Example usage in docker-compose.yml or lagoon configuration:
+	// lagoon:
+	//   additionalInitContainers:
+	//     - name: "custom-init"
+	//       container:
+	//         name: "custom-init"
+	//         image: "custom/image:latest"
+	//         command: ["sh", "-c", "echo 'Hello from {{ .ServiceValues.OverrideName }}'"]
+	//       volumeMounts:
+	//         - name: "{{ .ServiceValues.PersistentVolumeName }}"
+	//           mountPath: "/data"
 	PrimaryContainer: ServiceContainer{
 		Name:      nginxPHP.PrimaryContainer.Name,
 		Container: nginxPHP.PrimaryContainer.Container,

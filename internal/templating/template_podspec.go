@@ -237,35 +237,85 @@ func generatePodTemplateSpec(
 	podTemplateSpec.Spec.ImagePullSecrets = pullsecrets
 
 	// start working out the containers to add
-	// add any init container that the service may have
-	if serviceTypeValues.InitContainer.Name != "" {
-		enableInit := false
-		init := serviceTypeValues.InitContainer
-		// check if the init container has any flags required to add it
-		for k, v := range buildValues.FeatureFlags {
-			if init.FeatureFlags[k] == v {
-				enableInit = true
+	// add any init containers that the service may have
+	if len(serviceTypeValues.InitContainers) > 0 {
+		for _, init := range serviceTypeValues.InitContainers {
+			enableInit := false
+			// check if the init container has any flags required to add it
+			for k, v := range buildValues.FeatureFlags {
+				if init.FeatureFlags[k] == v {
+					enableInit = true
+				}
+			}
+			// otherwise if there are no flags
+			if enableInit || init.FeatureFlags == nil {
+				// create a copy of the init container to avoid modifying the original
+				initContainer := init.Container
+
+				// handle volume mounts with templating
+				for _, svm := range init.VolumeMounts {
+					volumeMount := corev1.VolumeMount{}
+					helpers.TemplateThings(tpld, svm, &volumeMount)
+					initContainer.VolumeMounts = append(initContainer.VolumeMounts, volumeMount)
+				}
+
+				// handle command with templating
+				cmd := []string{}
+				for _, c := range init.Command {
+					var c2 string
+					helpers.TemplateThings(tpld, c, &c2)
+					cmd = append(cmd, c2)
+				}
+				initContainer.Command = cmd
+
+				// init containers will more than likely contain public images, we should add a provided pull through imagecache if one is defined
+				if buildValues.ImageCache != "" {
+					initContainer.Image = fmt.Sprintf("%s%s", buildValues.ImageCache, initContainer.Image)
+				}
+
+				podTemplateSpec.Spec.InitContainers = append(podTemplateSpec.Spec.InitContainers, initContainer)
 			}
 		}
-		// otherwise if there are no flags
-		if enableInit || init.FeatureFlags == nil {
-			for _, svm := range serviceTypeValues.InitContainer.VolumeMounts {
-				volumeMount := corev1.VolumeMount{}
-				helpers.TemplateThings(tpld, svm, &volumeMount)
-				init.Container.VolumeMounts = append(init.Container.VolumeMounts, volumeMount)
+	}
+
+	// add any additional init containers from service values
+	if len(serviceValues.AdditionalInitContainers) > 0 {
+		for _, init := range serviceValues.AdditionalInitContainers {
+			enableInit := false
+			// check if the init container has any flags required to add it
+			for k, v := range buildValues.FeatureFlags {
+				if init.FeatureFlags[k] == v {
+					enableInit = true
+				}
 			}
-			cmd := []string{}
-			for _, c := range init.Command {
-				var c2 string
-				helpers.TemplateThings(tpld, c, &c2)
-				cmd = append(cmd, c2)
+			// otherwise if there are no flags
+			if enableInit || init.FeatureFlags == nil {
+				// create a copy of the init container to avoid modifying the original
+				initContainer := init.Container
+
+				// handle volume mounts with templating
+				for _, svm := range init.VolumeMounts {
+					volumeMount := corev1.VolumeMount{}
+					helpers.TemplateThings(tpld, svm, &volumeMount)
+					initContainer.VolumeMounts = append(initContainer.VolumeMounts, volumeMount)
+				}
+
+				// handle command with templating
+				cmd := []string{}
+				for _, c := range init.Command {
+					var c2 string
+					helpers.TemplateThings(tpld, c, &c2)
+					cmd = append(cmd, c2)
+				}
+				initContainer.Command = cmd
+
+				// init containers will more than likely contain public images, we should add a provided pull through imagecache if one is defined
+				if buildValues.ImageCache != "" {
+					initContainer.Image = fmt.Sprintf("%s%s", buildValues.ImageCache, initContainer.Image)
+				}
+
+				podTemplateSpec.Spec.InitContainers = append(podTemplateSpec.Spec.InitContainers, initContainer)
 			}
-			init.Container.Command = cmd
-			// init containers will more than likely contain public images, we should add a provided pull through imagecache if one is defined
-			if buildValues.ImageCache != "" {
-				init.Container.Image = fmt.Sprintf("%s%s", buildValues.ImageCache, init.Container.Image)
-			}
-			podTemplateSpec.Spec.InitContainers = append(podTemplateSpec.Spec.InitContainers, init.Container)
 		}
 	}
 

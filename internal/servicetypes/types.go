@@ -11,7 +11,7 @@ type ServiceType struct {
 	Volumes                  ServiceVolume
 	Strategy                 appsv1.DeploymentStrategy
 	PrimaryContainer         ServiceContainer
-	InitContainer            ServiceContainer
+	InitContainers           []ServiceContainer
 	SecondaryContainer       ServiceContainer
 	PodSecurityContext       ServicePodSecurityContext
 	EnableServiceLinks       bool

@@ -10,6 +10,8 @@ import (
 	"github.com/compose-spec/compose-go/types"
 	"github.com/uselagoon/build-deploy-tool/internal/generator"
 	"github.com/uselagoon/build-deploy-tool/internal/lagoon"
+	"github.com/uselagoon/build-deploy-tool/internal/servicetypes"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestGenerateDeploymentTemplate(t *testing.T) {
@@ -960,19 +962,13 @@ func TestGenerateDeploymentTemplate(t *testing.T) {
 					Project:         "example-project",
 					Environment:     "environment-name",
 					EnvironmentType: "production",
-					Namespace:       "example-project-environment-name",
+					Namespace:       "myexample-project-environment-name",
 					BuildType:       "branch",
 					LagoonVersion:   "v2.x.x",
 					Kubernetes:      "generator.local",
 					Branch:          "environment-name",
-					PodSecurityContext: generator.PodSecurityContext{
-						RunAsGroup:     0,
-						RunAsUser:      10000,
-						FsGroup:        10001,
-						OnRootMismatch: true,
-					},
-					GitSHA:       "0",
-					ConfigMapSha: "32bf1359ac92178c8909f0ef938257b477708aa0d78a5a15ad7c2d7919adf273",
+					GitSHA:          "0",
+					ConfigMapSha:    "32bf1359ac92178c8909f0ef938257b477708aa0d78a5a15ad7c2d7919adf273",
 					ImageReferences: map[string]string{
 						"valkey":         "harbor.example.com/example-project/environment-name/valkey@latest",
 						"valkey-persist": "harbor.example.com/example-project/environment-name/valkey-persist@latest",
@@ -992,6 +988,67 @@ func TestGenerateDeploymentTemplate(t *testing.T) {
 				},
 			},
 			want: "test-resources/deployment/result-valkey-1.yaml",
+		},
+		{
+			name: "test-additional-init-containers",
+			args: args{
+				buildValues: generator.BuildValues{
+					Project:         "example-project",
+					Environment:     "environment-name",
+					EnvironmentType: "production",
+					Namespace:       "myexample-project-environment-name",
+					BuildType:       "branch",
+					LagoonVersion:   "v2.x.x",
+					Kubernetes:      "generator.local",
+					Branch:          "environment-name",
+					FeatureFlags: map[string]bool{
+						"rootlessworkloads": true,
+					},
+					PodSecurityContext: generator.PodSecurityContext{
+						RunAsGroup: 0,
+						RunAsUser:  10000,
+						FsGroup:    10001,
+					},
+					GitSHA:       "0",
+					ConfigMapSha: "32bf1359ac92178c8909f0ef938257b477708aa0d78a5a15ad7c2d7919adf273",
+					ImageReferences: map[string]string{
+						"nginx-with-additional-init": "harbor.example.com/example-project/environment-name/nginx-with-additional-init@latest",
+						"php-with-additional-init":   "harbor.example.com/example-project/environment-name/php-with-additional-init@latest",
+					},
+					Services: []generator.ServiceValues{
+						{
+							Name:                 "nginx-with-additional-init",
+							OverrideName:         "nginx-with-additional-init",
+							Type:                 "nginx-php-persistent",
+							DBaaSEnvironment:     "production",
+							PersistentVolumePath: "/storage/data",
+							PersistentVolumeName: "nginx-with-additional-init",
+							AdditionalInitContainers: []servicetypes.ServiceContainer{
+								{
+									Name: "custom-init",
+									Container: corev1.Container{
+										Name:            "custom-init",
+										Image:           "custom/image:latest",
+										ImagePullPolicy: corev1.PullIfNotPresent,
+									},
+									Command: []string{
+										"sh",
+										"-c",
+										"echo 'Hello from {{ .ServiceValues.OverrideName }}'",
+									},
+								},
+							},
+							LinkedService: &generator.ServiceValues{
+								Name:             "php-with-additional-init",
+								OverrideName:     "nginx-with-additional-init",
+								Type:             "nginx-php-persistent",
+								DBaaSEnvironment: "production",
+							},
+						},
+					},
+				},
+			},
+			want: "test-resources/deployment/result-additional-init-containers.yaml",
 		},
 	}
 	for _, tt := range tests {
